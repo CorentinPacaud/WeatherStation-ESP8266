@@ -56,7 +56,12 @@ bool weatherB = false;
 String weather = "X";
 float extTemp = 14;
 float hic = 20.0;
-String cNow = "19:02";
+
+//TIME
+int cHour = 0;
+int cMin = 0;
+int cDay = 1;
+int cMonth = 1;
 int sleepSec = 0;
 
 int currentScreen = 0;
@@ -124,7 +129,7 @@ void getTemperature() {
   }
 
   // POST TEMP
-  http.begin(TSPost+"&field1="+hic);
+  http.begin(TSPost + "&field1=" + hic);
   int httpCode = http.GET();   //Send the request
   if (httpCode == 200) {
     // SUCCESS
@@ -224,35 +229,20 @@ void initWifi() {
   Serial.println(WiFi.localIP());
 }
 
-void showDisplay() {
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.setTextSize(1);
-  display.print("T:");
-  display.setTextSize(2);
-  display.print(String(round(hic)));
-  display.setTextSize(1);
-  display.print("*C");
-  display.setTextSize(1);
-  display.setCursor(64, 0);
-  display.print("xT:");
-  display.setTextSize(2);
-  display.print(String(round(extTemp)));
-  display.setTextSize(1);
-  display.print("*C");
-  display.setTextSize(2);
-  display.setCursor(34, 17);
-  display.print(cNow);
-
-  display.display();
-}
-
 void showDisplay2() {
   if (currentScreen == 0) {
     display.clearDisplay();
     display.setTextSize(4);
     display.setCursor(8, 0);
-    display.print(cNow);
+    if (cHour < 10) {
+      display.print("0");
+    }
+    display.print(cHour);
+    display.print(":");
+    if (cMin < 10) {
+      display.print("0");
+    }
+    display.print(cMin);
     currentScreen = 1;
   } else if (currentScreen == 1) {
     display.clearDisplay();
@@ -271,6 +261,16 @@ void showDisplay2() {
     display.setTextSize(4);
     display.setCursor(50, 4);
     display.print(String(round(extTemp)));
+    currentScreen = 3;
+  } else if (currentScreen == 3) {
+    display.clearDisplay();
+    display.setTextSize(4);
+    display.setCursor(8, 0);
+    if (cDay < 10) display.print("0");
+    display.print(cDay);
+    display.print("-");
+    if (cMonth < 10) display.print("0");
+    display.print(cMonth);
     currentScreen = 0;
   }
 
@@ -282,16 +282,17 @@ void parseTime(String date) {
   int index = date.indexOf(':');
   Serial.println("Date:" + date);
   if (index >= 0) {
-    Serial.println("Index:" + String(index));
-    char n[5];
-    n[0] = date.charAt(index - 2);
-    n[1] = date.charAt(index - 1);
-    n[2] = ':';
-    n[3] = date.charAt(index + 1);
-    n[4] = date.charAt(index + 2);
-    cNow = String(n);
-    sleepSec = (date.charAt(index + 4) - '0') * 10 + (date.charAt(index + 5) - '0');
+    //Serial.println("Index:" + String(index));
+    cHour = ((date.charAt(index - 2) - '0') * 10) + (date.charAt(index - 1) - '0');
+    cMin = ((date.charAt(index + 1) - '0') * 10) + (date.charAt(index + 2) - '0');
+    Serial.println("HOUR:" + String(cHour) + "  Min:" + String(cMin));
+       sleepSec = (date.charAt(index + 4) - '0') * 10 + (date.charAt(index + 5) - '0');
     Serial.println("SleepSec:" + String(sleepSec));
+  }
+  int indexD = date.indexOf('.');
+  if (indexD >= 0) {
+    cDay = ((date.charAt(0) - '0') * 10) + (date.charAt(1) - '0');
+    cMonth = ((date.charAt(3) - '0') * 10) + (date.charAt(4) - '0');
   }
 }
 
