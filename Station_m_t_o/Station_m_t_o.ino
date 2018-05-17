@@ -47,13 +47,23 @@ char weatherUrl[]  = OPENWEATHER_URL;
 // TIME
 char timeUrl[] = TIME_URL;
 
+// THINGSpeak
+String TSPost = THINGSPEAK_POST;
+String TSGetLastFiel2 = THINGSPEAK_GETLAST_FIELD2;
+
 HTTPClient http;
 bool weatherB = false;
 String weather = "X";
-float extTemp = 20.0;
+float extTemp = 14;
 float hic = 20.0;
 String cNow = "19:02";
 int sleepSec = 0;
+
+int currentScreen = 0;
+
+unsigned long millisScreens = 0;
+unsigned long millisTime = 0;
+unsigned long millisTemp = 0;
 
 // only runs once on boot
 void setup() {
@@ -73,81 +83,76 @@ void setup() {
   display.setCursor(0, 0);
   display.clearDisplay();
   Serial.println("End of init.........");
-  delay(2000);
 }
+
+
 
 // runs over and over again
 void loop() {
-  if (!weatherB) {
-    getWeather();
-    weatherB = true;
+  unsigned long currentMillis = millis();
+
+  // EVERY MINUTE -> TODO CHANGE TO ONCE A DAY
+  if ((unsigned long)(currentMillis - millisTime) >= (1000 * 60) || millisTime == 0) {
+    getTime();
+    millisTime = currentMillis;
   }
-  getTime();
+
+  // EVERY 5 min
+  if ((unsigned long)(currentMillis - millisTemp) >= (1000 * 60 * 5) || millisTemp == 0) {
+    getTemperature();
+    millisTemp = currentMillis;
+  }
+
+  // EVERY 5s
+  if ((unsigned long)(currentMillis - millisScreens) >= (1000 * 5) || millisScreens == 0) {
+    showDisplay2();
+    millisScreens = currentMillis;
+  }
+}
+
+void getTemperature() {
   float h = dht.readHumidity();
   // Read temperature as Celsius (the default)
   float t = dht.readTemperature();
   // Check if any reads failed and exit early (to try again).
   if (isnan(h) || isnan(t)) {
     Serial.println("Failed to read from DHT sensor!");
-    strcpy(celsiusTemp, "Failed");
-    strcpy(humidityTemp, "Failed");
   }
   else {
     // Computes temperature values in Celsius + Fahrenheit and Humidity
     hic = dht.computeHeatIndex(t, h, false);
-    dtostrf(hic, 6, 2, celsiusTemp);
-    dtostrf(h, 6, 2, humidityTemp);
-
   }
 
-  // Listenning for new clients
-  WiFiClient client = server.available();
-
-  if (client) {
-    Serial.println("New client");
-    // bolean to locate when the http request ends
-    boolean blank_line = true;
-    while (client.connected()) {
-      if (client.available()) {
-        char c = client.read();
-
-        if (c == '\n' && blank_line) {
-          // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Type: text/html");
-          client.println("Connection: close");
-          client.println();
-          // your actual web page that displays temperature and humidity
-          client.println("<!DOCTYPE HTML>");
-          client.println("<html>");
-          client.println("<head></head><body><h1>ESP8266 - Temperature and Humidity</h1><h3>Temperature in Celsius: ");
-          client.println(celsiusTemp);
-          client.println("*F</h3><h3>Humidity: ");
-          client.println(humidityTemp);
-          client.println("%</h3><h3>");
-          client.println("</body></html>");
-          break;
-        }
-        if (c == '\n') {
-          // when starts reading a new line
-          blank_line = true;
-        }
-        else if (c != '\r') {
-          // when finds a character on the current line
-          blank_line = false;
-        }
-      }
-    }
-    // closing the client connection
-    delay(1);
-    client.stop();
-    Serial.println("Client disconnected.");
+  // POST TEMP
+  http.begin(TSPost+"&field1="+hic);
+  int httpCode = http.GET();   //Send the request
+  if (httpCode == 200) {
+    // SUCCESS
+    Serial.println("POST T SUCCESS");
+  } else {
+    Serial.println("POST T Error : " + httpCode);
   }
-  // Serial.println("Weather: " + weather);
-  showDisplay();
-  //  Serial.println("Going into deep sleep for 20 seconds");
-  ESP.deepSleep(60e6-(sleepSec*1e6)); // 20e6 is 20 microseconds
+  http.end();  //Close connection
+
+  // GET EXT TEMP
+  http.begin(TSGetLastFiel2);
+  httpCode = http.GET();
+  if (httpCode > 0) { //Check the returning code
+    String json = http.getString();   //Get the request response payload
+    Serial.println(json);                     //Print the response payload
+    const size_t bufferSize = JSON_OBJECT_SIZE(3) + 70;
+    DynamicJsonBuffer jsonBuffer(bufferSize);
+    JsonObject& root = jsonBuffer.parseObject(json);
+
+    const char* created_at = root["created_at"]; // "2018-05-14T20:41:46Z"
+    int entry_id = root["entry_id"]; // 624
+    const char* field2 = root["field2"]; // "19.6"
+    extTemp = atof(field2);
+  } else {
+    Serial.println("GET xT Error : " + httpCode);
+  }
+  http.end();   //Close connection
+
 }
 
 void getWeather() {
@@ -239,9 +244,39 @@ void showDisplay() {
   display.setCursor(34, 17);
   display.print(cNow);
 
+  display.display();
+}
+
+void showDisplay2() {
+  if (currentScreen == 0) {
+    display.clearDisplay();
+    display.setTextSize(4);
+    display.setCursor(8, 0);
+    display.print(cNow);
+    currentScreen = 1;
+  } else if (currentScreen == 1) {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.print("T");
+    display.setTextSize(4);
+    display.setCursor(50, 4);
+    display.print(String(round(hic)));
+    currentScreen = 2;
+  } else if (currentScreen == 2) {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.print("xT");
+    display.setTextSize(4);
+    display.setCursor(50, 4);
+    display.print(String(round(extTemp)));
+    currentScreen = 0;
+  }
 
   display.display();
 }
+
 
 void parseTime(String date) {
   int index = date.indexOf(':');
@@ -249,13 +284,13 @@ void parseTime(String date) {
   if (index >= 0) {
     Serial.println("Index:" + String(index));
     char n[5];
-    n[0] = date.charAt(index-2);
-    n[1] = date.charAt(index-1);
+    n[0] = date.charAt(index - 2);
+    n[1] = date.charAt(index - 1);
     n[2] = ':';
-    n[3] = date.charAt(index+1);
-    n[4] = date.charAt(index+2);
+    n[3] = date.charAt(index + 1);
+    n[4] = date.charAt(index + 2);
     cNow = String(n);
-    sleepSec = (date.charAt(index+4)-'0')*10+(date.charAt(index+5)-'0');
+    sleepSec = (date.charAt(index + 4) - '0') * 10 + (date.charAt(index + 5) - '0');
     Serial.println("SleepSec:" + String(sleepSec));
   }
 }
